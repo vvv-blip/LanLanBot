@@ -565,7 +565,7 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             
     buy_now_message_part = (
         f"If you bought **${investment_amount_to_show:,.0f}** LanLan today, your investment could be:\n"
-        f"{'\n'.join(future_value_messages)}"
+        "\n".join(future_value_messages) # FIXED: Removed f-string and curly braces around '\n'
     )
 
     image_url = SCHEDULED_AND_CHECK_PRICE_IMAGE_URL

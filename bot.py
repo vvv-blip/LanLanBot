@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
-    ApplicationBuilder,
+    Application, # Use Application for webhooks
     CommandHandler,
     ContextTypes,
     JobQueue,
@@ -17,6 +17,7 @@ from telegram.ext import (
     filters,
     ConversationHandler
 )
+from flask import Flask, request, jsonify # Import Flask and request
 
 # Configure logging
 logging.basicConfig(
@@ -26,20 +27,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Environment variables
+# --- Environment variables (NO HARDCODED DEFAULTS FOR SENSITIVE KEYS) ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-THEGRAPH_API_KEY = os.getenv("THEGRAPH_API_KEY", "6eddad8f39fa53f77b3364dc72aeca36")
-MAMA_COIN_ADDRESS = os.getenv("MAMA_COIN_ADDRESS", "0xEccA809227d43B895754382f1fd871628d7E51FB")
+THEGRAPH_API_KEY = os.getenv("THEGRAPH_API_KEY") # This MUST be set as an env var now
+MAMA_COIN_ADDRESS = os.getenv("MAMA_COIN_ADDRESS") # This MUST be set as an env var now
+
+# TOTAL_SUPPLY can have a fallback if not critical for security
 try:
-    TOTAL_SUPPLY = float(os.getenv("TOTAL_SUPPLY", "8888888888"))
-except ValueError:
-    TOTAL_SUPPLY = 8888888888.0
-    logger.warning("Invalid TOTAL_SUPPLY, using default: 8888888888")
+    TOTAL_SUPPLY = float(os.getenv("TOTAL_SUPPLY")) # Get from env, or handle if None
+except (ValueError, TypeError): # TypeError occurs if os.getenv returns None
+    TOTAL_SUPPLY = 8888888888.0 # Fallback default value
+    logger.warning("TOTAL_SUPPLY environment variable not set or invalid, using default: %s", TOTAL_SUPPLY)
+
+
+# --- WEBHOOK CONFIGURATION ---
+WEBHOOK_URL = os.getenv("WEBHOOK_URL") # This will be your Render service URL (e.g., https://your-bot-name.onrender.com)
+WEBHOOK_PATH = "/webhook" # The path Telegram sends updates to on your service
+PORT = int(os.getenv("PORT", 8080)) # Render automatically assigns a PORT env var, default to 8080
+
 
 # Function to parse interval strings (e.g., "1h", "30m")
 def parse_interval_string(interval_str):
     if not isinstance(interval_str, str):
-        return None # Return None if not a string, will use default
+        return None
 
     match_h = re.match(r'(\d+)\s*h', interval_str)
     match_m = re.match(r'(\d+)\s*m', interval_str)
@@ -49,12 +59,19 @@ def parse_interval_string(interval_str):
     elif match_m:
         return int(match_m.group(1)) * 60 # minutes to seconds
     else:
-        return None # Invalid format
+        return None
 
 # Constants
 SETTINGS_FILE = "settings.json" 
 GROUPS_FILE = "groups.json"
-SUBGRAPH_URL = f"https://gateway.thegraph.com/api/{THEGRAPH_API_KEY}/subgraphs/id/EYCKATKGBKLWvSfwvBjzfCBmGwYNdVkduYXVivCsLRFu"
+
+# Ensure API key is present for SUBGRAPH_URL
+if not THEGRAPH_API_KEY:
+    logger.error("THEGRAPH_API_KEY is not set. Cannot form SUBGRAPH_URL.")
+    SUBGRAPH_URL = None # Prevent forming an invalid URL
+else:
+    SUBGRAPH_URL = f"https://gateway.thegraph.com/api/{THEGRAPH_API_KEY}/subgraphs/id/EYCKATKGBKLWvSfwvBjzfCBmGwYNdVkduYXVivCsLRFu"
+
 
 # Load SCHEDULED_INTERVAL from environment or default
 SCHEDULED_INTERVAL_STR = os.getenv("SCHEDULED_INTERVAL", "2h") # Default to 2 hours
@@ -66,14 +83,10 @@ if SCHEDULED_INTERVAL is None:
 SCHEDULED_FIRST = 60
 
 # --- UPDATED IMAGE URLs ---
-# Using the DIRECT Imgur links provided in the last user query.
-# IMPORTANT: These URLs *must* be direct image links (ending in .jpeg, .gif, etc.)
-# and should not contain any backslashes.
 DEFAULT_IMAGE_URL = "https://i.imgur.com/LFE9ouI.jpeg"
 SCHEDULED_AND_CHECK_PRICE_IMAGE_URL = "https://i.imgur.com/EkpFRCD.jpeg"
 
-
-# Placeholder GIFs - ideally, these would also be hosted on imgur or similar
+# Placeholder GIFs - ensure these are actual direct image/gif links
 GROWTH_GIF_URLS = [
     "https://i.imgur.com/growth1.gif", 
     "https://i.imgur.com/growth2.gif",
@@ -94,7 +107,6 @@ def load_json(file_path, default_value):
     try:
         with open(file_path, "r") as f:
             data = json.load(f)
-            # Basic type check to prevent common errors
             if isinstance(default_value, dict) and not isinstance(data, dict):
                 logger.warning(f"Loaded data from {file_path} is not a dict, returning default.")
                 return default_value
@@ -149,6 +161,10 @@ def generate_progress_bar(current_value, start_milestone, end_milestone, bar_len
 
 # Fetch LanLan market cap from Uniswap V2
 def fetch_market_cap():
+    if not SUBGRAPH_URL or not MAMA_COIN_ADDRESS:
+        logger.error("SUBGRAPH_URL or MAMA_COIN_ADDRESS is not defined. Cannot fetch market cap.")
+        return None
+
     query = """
     {
       token(id: "%s") {
@@ -180,7 +196,6 @@ def fetch_market_cap():
         eth_price_usd = float(data["bundle"]["ethPrice"])
         token_price_eth = float(token_data["derivedETH"])
 
-        # CORRECTED LINE: Used eth_price_usd instead of undefined eth_price_eth
         token_price_usd = token_price_eth * eth_price_usd 
         market_cap = token_price_usd * TOTAL_SUPPLY
         logger.info(f"Fetched market cap: ${market_cap:,.0f}")
@@ -209,7 +224,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_photo(
-        photo=DEFAULT_IMAGE_URL, # Using the default image for /start
+        photo=DEFAULT_IMAGE_URL,
         caption=(
             "🎉 Hey, LanLan lovers! 😺 I’m your bubbly bot tracking LanLan’s purr-gress! "
             "Choose an option below to get started. 🌟"
@@ -266,31 +281,25 @@ async def lanlan_price_status(update_object: Update, context: ContextTypes.DEFAU
         1_000_000_000, 1_500_000_000, 2_000_000_000, 5_000_000_000, 10_000_000_000
     ]
     
-    # Determine the current range for the progress bar based on the highest milestone achieved
     highest_achieved = settings.get('highest_milestone_achieved', 0)
     
     current_milestone_start_for_progress = highest_achieved
     next_milestone_end_for_progress = None
 
-    # Find the next milestone *above* the highest achieved, or the current market cap if it's higher
     for milestone_val in sorted(milestones):
         if milestone_val > highest_achieved:
             next_milestone_end_for_progress = milestone_val
             break
     
-    # If current market cap is above all hardcoded milestones, set a dynamic next target
     if next_milestone_end_for_progress is None:
         if milestones:
             current_milestone_start_for_progress = milestones[-1]
             next_milestone_end_for_progress = current_milestone_start_for_progress * 1.5
         else:
             current_milestone_start_for_progress = 0
-            next_milestone_end_for_progress = 10_000_000 # Fallback if no milestones at all
+            next_milestone_end_for_progress = 10_000_000
 
-    # Adjust current_milestone_start_for_progress if market_cap is below the highest achieved
-    # This ensures the progress bar starts from the last *relevant* point
     if market_cap < current_milestone_start_for_progress:
-        # Find the milestone just below the current market cap, or 0
         temp_start = 0
         for m in sorted(milestones):
             if m <= market_cap:
@@ -298,12 +307,11 @@ async def lanlan_price_status(update_object: Update, context: ContextTypes.DEFAU
             else:
                 break
         current_milestone_start_for_progress = temp_start
-        # Also ensure next_milestone_end_for_progress is still the correct next one
         for m in sorted(milestones):
             if m > market_cap:
                 next_milestone_end_for_progress = m
                 break
-        if next_milestone_end_for_progress is None: # If market_cap is above all hardcoded
+        if next_milestone_end_for_progress is None:
             next_milestone_end_for_progress = current_milestone_start_for_progress * 1.5 if current_milestone_start_for_progress > 0 else 10_000_000
 
 
@@ -324,11 +332,12 @@ async def lanlan_price_status(update_object: Update, context: ContextTypes.DEFAU
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # --- UPDATED IMAGE USAGE ---
     image_to_send = SCHEDULED_AND_CHECK_PRICE_IMAGE_URL 
 
     try:
-        await update_object.message.reply_photo(
+        # Use query.message if called from callback, else update.message
+        target_message = update_object.message if hasattr(update_object, 'message') else update_object.effective_message
+        await target_message.reply_photo(
             photo=image_to_send,
             caption=message,
             parse_mode='Markdown',
@@ -336,7 +345,8 @@ async def lanlan_price_status(update_object: Update, context: ContextTypes.DEFAU
         )
     except Exception as e:
         logger.warning(f"Could not send image for check price status, sending text only: {e}")
-        await update_object.message.reply_text(
+        target_message = update_object.message if hasattr(update_object, 'message') else update_object.effective_message
+        await target_message.reply_text(
             message,
             parse_mode='Markdown',
             reply_markup=reply_markup
@@ -415,8 +425,6 @@ async def whomadethebot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text("@nakatroll")
 
 async def setimage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # This command is largely deprecated now that images are hardcoded.
-    # It will only affect images specified here, not the hardcoded ones.
     await update.message.reply_text("Image settings are now hardcoded for stability. This command is currently disabled. Contact a developer if you need changes to the default or millionaire images.")
 
 async def setschedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -452,7 +460,6 @@ async def setschedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         
         # Reschedule the job
         job_queue: JobQueue = context.application.job_queue
-        # Remove existing job if any
         current_jobs = job_queue.get_jobs_by_name("scheduled_price_update")
         for job in current_jobs:
             job.schedule_removal()
@@ -487,16 +494,14 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         1_000_000_000, 1_500_000_000, 2_000_000_000, 5_000_000_000, 10_000_000_000
     ]
 
-    # Update highest_milestone_achieved
     highest_milestone_achieved = settings.get('highest_milestone_achieved', 0)
     for milestone_val in sorted(milestones):
         if market_cap >= milestone_val and milestone_val > highest_milestone_achieved:
             highest_milestone_achieved = milestone_val
             settings['highest_milestone_achieved'] = highest_milestone_achieved
-            save_json(SETTINGS_FILE, settings) # Save the updated milestone to persistence
+            save_json(SETTINGS_FILE, settings)
             logger.info(f"Updated highest_milestone_achieved to {highest_milestone_achieved}")
 
-    # Determine next target for progress bar based on highest_milestone_achieved
     current_milestone_start_for_progress = highest_milestone_achieved
     next_milestone_end_for_progress = None
     
@@ -508,17 +513,16 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     if next_milestone_end_for_progress is None:
         if milestones:
             current_milestone_start_for_progress = milestones[-1]
-            next_milestone_end_for_progress = current_milestone_start_for_progress * 1.5 # Dynamic next target if past all
+            next_milestone_end_for_progress = current_milestone_start_for_progress * 1.5
         else:
             current_milestone_start_for_progress = 0
-            next_milestone_end_for_progress = 10_000_000 # Fallback if no milestones at all
+            next_milestone_end_for_progress = 10_000_000
 
     progress_bar = generate_progress_bar(market_cap, current_milestone_start_for_progress, next_milestone_end_for_progress)
 
     # Check for milestone achievements and send GIF
     if last_known_market_cap is not None:
         for milestone_cap in sorted(milestones):
-            # Only trigger if we *crossed* the milestone since last check
             if last_known_market_cap < milestone_cap <= market_cap:
                 milestone_message = (
                     f"✨🎉 WoW! LanLan just crossed the **${milestone_cap:,.0f}** market cap milestone! "
@@ -554,18 +558,16 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     tokens_now = investment_amount_to_show / price if price > 0 else 0
 
     future_value_messages = []
-    # Project to 100M, 500M, 1B market caps
     for target_cap in [100_000_000, 500_000_000, 1_000_000_000]:
         target_price = target_cap / TOTAL_SUPPLY if TOTAL_SUPPLY > 0 else 0
         value_at_target = tokens_now * target_price if tokens_now > 0 else 0
-        future_value_messages.append(f"• at **${target_cap:,.0f}** MC: **${value_at_target:,.2f}**")
+        future_value_messages.append(f"• at **${target_cap:,.0f}** MC: **${value_at_cap:,.2f}**")
             
     buy_now_message_part = (
         f"If you bought **${investment_amount_to_show:,.0f}** LanLan today, your investment could be:\n"
         f"{'\n'.join(future_value_messages)}"
     )
 
-    # --- UPDATED IMAGE USAGE ---
     image_url = SCHEDULED_AND_CHECK_PRICE_IMAGE_URL
     
     message = (
@@ -603,30 +605,76 @@ async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await start(dummy_update, context)
 
 
-def main():
-    global last_known_market_cap, settings, groups, SCHEDULED_INTERVAL, SCHEDULED_INTERVAL_STR
+# Flask app initialization
+flask_app = Flask(__name__)
 
-    if not TELEGRAM_TOKEN:
-        logger.error("TELEGRAM_TOKEN is not set")
-        raise ValueError("TELEGRAM_TOKEN environment variable is required")
+# Global variable to hold the PTB Application instance
+ptb_application = None
+
+@flask_app.route(WEBHOOK_PATH, methods=["POST"])
+async def telegram_webhook():
+    if not ptb_application:
+        logger.error("Telegram Application not initialized for webhook.")
+        return jsonify({"status": "error", "message": "Bot not ready"}), 503
+
+    # Ensure the request is coming from Telegram and is a valid JSON
+    if not request.json:
+        logger.warning("Received non-JSON request to webhook.")
+        return jsonify({"status": "error", "message": "Invalid request"}), 400
 
     try:
-        app = ApplicationBuilder().token(TELEGRAM_TOKEN).job_queue(JobQueue()).build()
-        logger.info("Application initialized successfully")
+        update = Update.de_json(request.json, ptb_application.bot)
+        await ptb_application.process_update(update)
+        return jsonify({"status": "ok"}), 200
     except Exception as e:
-        logger.error(f"Failed to initialize application: {e}")
-        raise
+        logger.error(f"Error processing Telegram webhook update: {e}")
+        return jsonify({"status": "error", "message": "Processing failed"}), 500
+
+@flask_app.route("/")
+def home():
+    return "LanLan Bot is running!"
+
+@flask_app.route("/health")
+def health_check():
+    # Simple health check endpoint for uptime monitors
+    return jsonify({"status": "healthy", "message": "Bot operational"})
+
+
+# --- Main function for initializing and running the bot ---
+def main():
+    global last_known_market_cap, settings, groups, SCHEDULED_INTERVAL, SCHEDULED_INTERVAL_STR, ptb_application
+
+    # --- Critical checks for required environment variables ---
+    if not TELEGRAM_TOKEN:
+        logger.critical("TELEGRAM_TOKEN is not set. Bot cannot function without it.")
+        raise ValueError("TELEGRAM_TOKEN environment variable is required.")
+    if not THEGRAPH_API_KEY:
+        logger.critical("THEGRAPH_API_KEY is not set. Bot cannot function without it.")
+        raise ValueError("THEGRAPH_API_KEY environment variable is required.")
+    if not MAMA_COIN_ADDRESS:
+        logger.critical("MAMA_COIN_ADDRESS is not set. Bot cannot function without it.")
+        raise ValueError("MAMA_COIN_ADDRESS environment variable is required.")
+    if not WEBHOOK_URL:
+        logger.critical("WEBHOOK_URL is not set. This is required for webhook mode.")
+        raise ValueError("WEBHOOK_URL environment variable is required for webhook mode.")
+
+    # Initialize the PTB Application
+    ptb_application = (
+        Application.builder()
+        .token(TELEGRAM_TOKEN)
+        .updater(None) # No Updater needed for webhooks
+        .job_queue(JobQueue())
+        .build()
+    )
+    logger.info("Application initialized successfully for webhooks")
 
     # Initialize data (settings and groups)
-    # Load existing settings, or provide a default structure
     settings = load_json(SETTINGS_FILE, {
-        "highest_milestone_achieved": 0, # New setting for milestone tracking
+        "highest_milestone_achieved": 0,
     })
-    # Ensure hardcoded URLs are always set, even if settings.json exists
-    # NO F-STRING HERE - this is a direct assignment of string variables
     settings["default_image_url"] = DEFAULT_IMAGE_URL
     settings["scheduled_and_check_price_image_url"] = SCHEDULED_AND_CHECK_PRICE_IMAGE_URL
-    save_json(SETTINGS_FILE, settings) # Save immediately to persist new default structure if it's new
+    save_json(SETTINGS_FILE, settings)
 
     groups_list = load_json(GROUPS_FILE, []) 
     groups = set(groups_list)
@@ -639,39 +687,36 @@ def main():
         logger.warning("Could not fetch initial market cap. Milestone tracking might be inaccurate at start.")
 
     # Register handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("wen", wen))
-    app.add_handler(CommandHandler("lanlan", lanlan_command)) # Simple command
-    app.add_handler(CommandHandler("setimage", setimage)) # Deprecated command
-    app.add_handler(CommandHandler("setschedule", setschedule)) # New admin command
-    app.add_handler(CommandHandler("whomadethebot", whomadethebot))
-    app.add_handler(CommandHandler("help", help_command)) # Help works directly now
+    ptb_application.add_handler(CommandHandler("start", start))
+    ptb_application.add_handler(CommandHandler("wen", wen))
+    ptb_application.add_handler(CommandHandler("lanlan", lanlan_command))
+    ptb_application.add_handler(CommandHandler("setimage", setimage))
+    ptb_application.add_handler(CommandHandler("setschedule", setschedule))
+    ptb_application.add_handler(CommandHandler("whomadethebot", whomadethebot))
+    ptb_application.add_handler(CommandHandler("help", help_command))
 
-    # Callback query handlers for inline buttons
-    # Note: 'start_lanlan_calculation' now just gives instructions for the /lanlan command
-    app.add_handler(CallbackQueryHandler(button_handler, pattern='^(check_lanlan_price|start_lanlan_calculation)$'))
-    app.add_handler(CallbackQueryHandler(back_to_main_menu, pattern='^back_to_main$'))
+    ptb_application.add_handler(CallbackQueryHandler(button_handler, pattern='^(check_lanlan_price|start_lanlan_calculation)$'))
+    ptb_application.add_handler(CallbackQueryHandler(back_to_main_menu, pattern='^back_to_main$'))
 
-    # Schedule recurring job
-    try:
-        job_queue: JobQueue = app.job_queue
-        # Check if SCHEDULED_INTERVAL is valid before scheduling
-        if SCHEDULED_INTERVAL is not None and SCHEDULED_INTERVAL > 0:
-            job_queue.run_repeating(scheduled_job, interval=SCHEDULED_INTERVAL, first=SCHEDULED_FIRST, name="scheduled_price_update")
-            logger.info(f"Scheduled job set successfully with interval: {SCHEDULED_INTERVAL_STR}")
-        else:
-            logger.error(f"Invalid SCHEDULED_INTERVAL ({SCHEDULED_INTERVAL_STR}), job not scheduled.")
-            raise ValueError("Scheduled interval is invalid.")
-    except Exception as e:
-        logger.error(f"Failed to schedule job: {e}")
-        raise
+    # Set up webhook for Telegram
+    async def set_telegram_webhook():
+        try:
+            full_webhook_url = f"{WEBHOOK_URL}{WEBHOOK_PATH}"
+            await ptb_application.bot.set_webhook(url=full_webhook_url, allowed_updates=["message", "callback_query"])
+            logger.info(f"Telegram webhook set to: {full_webhook_url}")
+        except Exception as e:
+            logger.error(f"Failed to set Telegram webhook: {e}")
 
-    try:
-        logger.info("Bot started")
-        app.run_polling(allowed_updates=["message", "callback_query"], drop_pending_updates=True)
-    except Exception as e:
-        logger.error(f"Bot polling failed: {e}")
-        raise
+    # Run the webhook setup as an async task
+    asyncio.run(set_telegram_webhook())
+
+    # Start the JobQueue (important for scheduled_job to run)
+    # This only starts the JobQueue listener, NOT Telegram polling.
+    # It's confusingly named, but required for JobQueue in webhook mode.
+    ptb_application.start_polling() 
+
+    logger.info(f"Flask app starting on port {PORT}")
+    flask_app.run(host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
     main()

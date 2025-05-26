@@ -68,8 +68,8 @@ SCHEDULED_FIRST = 60
 # --- UPDATED IMAGE URLs ---
 # !!! IMPORTANT: Replace these with ACTUAL direct image links (e.g., ending in .jpg, .gif, .png) !!!
 # You need to go to your Imgur album, open the image, right-click, and "Copy Image Address"
-DEFAULT_IMAGE_URL = "https://imgur.com/a/whegQcv" # Placeholder for https://imgur.com/a/whegQcv
-SCHEDULED_AND_CHECK_PRICE_IMAGE_URL = "https://imgur.com/a/FVtSdd9" # Placeholder for https://imgur.com/a/FVtSdd9
+DEFAULT_IMAGE_URL = "https://i.imgur.com/LFE9ouI.jpeg" # Placeholder for https://imgur.com/a/whegQcv
+SCHEDULED_AND_CHECK_PRICE_IMAGE_URL = "https://i.imgur.com/EkpFRCD.jpeg" # Placeholder for https://imgur.com/a/FVtSdd9
 
 
 # Placeholder GIFs - ideally, these would also be hosted on imgur or similar

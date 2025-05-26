@@ -713,7 +713,7 @@ def main():
     # Start the JobQueue (important for scheduled_job to run)
     # This only starts the JobQueue listener, NOT Telegram polling.
     # It's confusingly named, but required for JobQueue in webhook mode.
-    ptb_application.start_polling() 
+    
 
     logger.info(f"Flask app starting on port {PORT}")
     flask_app.run(host="0.0.0.0", port=PORT)

@@ -20,6 +20,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 
+# Ensure /data directory exists
+os.makedirs("/data", exist_ok=True)
+
 # Configure logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -112,6 +115,7 @@ def load_json(file_path, default_value):
 
 def save_json(file_path, data):
     try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         logger.info(f"Writing to {file_path}")
         with open(file_path, "w") as f:
             json.dump(data, f, indent=4)

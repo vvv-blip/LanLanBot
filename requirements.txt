@@ -1,5 +1,5 @@
-python-telegram-bot==20.8  
+python-telegram-bot==20.8
 requests
-Flask[async]
-gunicorn                  
-uvicorn[standard]         
+Flask==2.3.3  # <--- IMPORTANT CHANGE: Specify Flask version
+gunicorn
+uvicorn[standard]

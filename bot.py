@@ -379,7 +379,7 @@ async def lanlan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
         current_market_cap = fetch_market_cap()
-        if current_market_cap === None:
+        if current_market_cap == None:
             await update.message.reply_text("😿 Oh no, I couldn’t fetch current LanLan data! Please try again later. The cat's on a coffee break!")
             return
         

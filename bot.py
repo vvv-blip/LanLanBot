@@ -4,7 +4,7 @@ import logging
 import requests
 import asyncio
 import random
-import re # For parsing time strings (e.g., "1h", "30m")
+import re
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
@@ -15,7 +15,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     MessageHandler,
     filters,
-    ConversationHandler # Still imported but not used for /lanlan
+    ConversationHandler
 )
 
 # Configure logging
@@ -66,10 +66,11 @@ if SCHEDULED_INTERVAL is None:
 SCHEDULED_FIRST = 60
 
 # --- UPDATED IMAGE URLs ---
-# !!! IMPORTANT: Replace these with ACTUAL direct image links (e.g., ending in .jpg, .gif, .png) !!!
-# You need to go to your Imgur album, open the image, right-click, and "Copy Image Address"
-DEFAULT_IMAGE_URL = "https://i.imgur.com/LFE9ouI.jpeg" # Placeholder for https://imgur.com/a/whegQcv
-SCHEDULED_AND_CHECK_PRICE_IMAGE_URL = "https://i.imgur.com/EkpFRCD.jpeg" # Placeholder for https://imgur.com/a/FVtSdd9
+# Using the DIRECT Imgur links provided in the last user query.
+# IMPORTANT: These URLs *must* be direct image links (ending in .jpeg, .gif, etc.)
+# and should not contain any backslashes.
+DEFAULT_IMAGE_URL = "https://i.imgur.com/LFE9ouI.jpeg"
+SCHEDULED_AND_CHECK_PRICE_IMAGE_URL = "https://i.imgur.com/EkpFRCD.jpeg"
 
 
 # Placeholder GIFs - ideally, these would also be hosted on imgur or similar
@@ -106,7 +107,7 @@ def load_json(file_path, default_value):
         return default_value
     except Exception as e:
         logger.error(f"An unexpected error occurred while loading {file_path}: {e}. Using default.")
-        return data
+        return default_value
 
 def save_json(file_path, data):
     try:
@@ -186,7 +187,6 @@ def fetch_market_cap():
         return market_cap
     except requests.exceptions.RequestException as req_err:
         logger.error(f"Network or HTTP error fetching market cap: {req_err}")
-        return None
     except json.JSONDecodeError as json_err:
         logger.error(f"JSON decode error from subgraph response: {json_err}. Response: {response.text if 'response' in locals() else 'N/A'}")
     except KeyError as key_err:
@@ -623,6 +623,7 @@ def main():
         "highest_milestone_achieved": 0, # New setting for milestone tracking
     })
     # Ensure hardcoded URLs are always set, even if settings.json exists
+    # NO F-STRING HERE - this is a direct assignment of string variables
     settings["default_image_url"] = DEFAULT_IMAGE_URL
     settings["scheduled_and_check_price_image_url"] = SCHEDULED_AND_CHECK_PRICE_IMAGE_URL
     save_json(SETTINGS_FILE, settings) # Save immediately to persist new default structure if it's new

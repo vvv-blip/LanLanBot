@@ -379,7 +379,7 @@ async def lanlan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
         current_market_cap = fetch_market_cap()
-        if current_market_cap is None:
+        if current_market_cap === None:
             await update.message.reply_text("😿 Oh no, I couldn’t fetch current LanLan data! Please try again later. The cat's on a coffee break!")
             return
         
@@ -598,23 +598,6 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.warning(f"Failed to send message to group {group_id}: {e}")
 
 
-# This function was not in use, removing or integrating into button_handler
-# async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-#     query = update.callback_query
-#     await query.answer()
-    
-#     try:
-#         await query.message.delete()
-#     except Exception as e:
-#         logger.warning(f"Could not delete message: {e}")
-
-#     dummy_update = Update(update_id=update.update_id)
-#     dummy_update._effective_chat = query.message.chat
-#     dummy_update._effective_message = query.message
-
-#     await start(dummy_update, context)
-
-
 # Flask app initialization
 flask_app = Flask(__name__)
 
@@ -630,9 +613,8 @@ async def telegram_webhook():
         return jsonify({"status": "error", "message": "Bot not ready"}), 503
 
     try:
-        # Crucial for PTB v20.x in webhook mode: ensure application context is active
-        async with ptb_application:
-            await ptb_application.process_update(Update.de_json(request.json, ptb_application.bot))
+        # Directly process the update. The Application is already running in background via run_in_background().
+        await ptb_application.process_update(Update.de_json(request.json, ptb_application.bot))
         return jsonify({"status": "ok"}), 200
     except Exception as e:
         logger.error(f"Error processing Telegram webhook update: {e}")
@@ -714,9 +696,10 @@ async def main(): # <<< IMPORTANT: Changed to async def
 
 
     # Start the PTB Application's internal loop (for JobQueue and event processing) in a background task.
+    # Use run_in_background for webhook mode without an Updater.
     # This allows Flask's blocking `run()` method to execute.
-    asyncio.create_task(ptb_application.run_webhook())
-    logger.info("PTB Application background task started.")
+    ptb_application.run_in_background() # <<< FINAL FIX HERE
+    logger.info("PTB Application background task started using run_in_background.")
 
     # Set up webhook with Telegram. This requires the bot to be running.
     try:

@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
-    Application, # Use Application for webhooks
+    Application,
     CommandHandler,
     ContextTypes,
     JobQueue,
@@ -17,7 +17,7 @@ from telegram.ext import (
     filters,
     ConversationHandler
 )
-from flask import Flask, request, jsonify # Import Flask and request
+from flask import Flask, request, jsonify
 
 # Configure logging
 logging.basicConfig(
@@ -80,7 +80,7 @@ if SCHEDULED_INTERVAL is None:
     SCHEDULED_INTERVAL = 7200 # Fallback to 2 hours if parsing fails
     logger.warning(f"Invalid SCHEDULED_INTERVAL format '{SCHEDULED_INTERVAL_STR}', using default: {SCHEDULED_INTERVAL} seconds.")
 
-SCHEDULED_FIRST = 60
+SCHEDULED_FIRST = 60 # First job run after 60 seconds of deployment
 
 # --- UPDATED IMAGE URLs ---
 DEFAULT_IMAGE_URL = "https://i.imgur.com/LFE9ouI.jpeg"
@@ -255,22 +255,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if query.data == 'check_lanlan_price':
         await query.message.reply_text("🐾 Fetching the freshest LanLan deets for you... One moment! 🐱")
-        await lanlan_price_status(query, context)
+        await lanlan_price_status(query, context) # Pass query directly as the update object
     elif query.data == 'start_lanlan_calculation':
         await query.message.reply_text(
             "Ready to crunch some numbers?!\n"
             "Just type `/lanlan <amount_invested> <initial_market_cap>`\n"
             "For example: `/lanlan 100 5000000` (meaning **$100** invested at **$5,000,000** market cap). Easy peasy, lemon squeezy! 🍋"
         )
+    elif query.data == 'back_to_main': # Handle back to main from buttons
+        await query.message.delete() # Clean up previous message
+        # Re-trigger the start command logic
+        dummy_update = Update(update_id=update.update_id)
+        dummy_update._effective_chat = query.message.chat
+        dummy_update._effective_message = query.message
+        await start(dummy_update, context)
+
 
 async def lanlan_price_status(update_object: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     market_cap = fetch_market_cap()
     if market_cap is None:
-        await update_object.message.reply_text("😿 Oh no, I couldn’t fetch LanLan data! Please try again later. The cat's on a coffee break!")
+        await update_object.effective_message.reply_text("😿 Oh no, I couldn’t fetch LanLan data! Please try again later. The cat's on a coffee break!")
         return
     
     if TOTAL_SUPPLY == 0:
-        await update_object.message.reply_text("😿 Total supply is zero, so I can't calculate the price. Meow-ch!")
+        await update_object.effective_message.reply_text("😿 Total supply is zero, so I can't calculate the price. Meow-ch!")
         return
 
     price = market_cap / TOTAL_SUPPLY
@@ -335,8 +343,8 @@ async def lanlan_price_status(update_object: Update, context: ContextTypes.DEFAU
     image_to_send = SCHEDULED_AND_CHECK_PRICE_IMAGE_URL 
 
     try:
-        # Use query.message if called from callback, else update.message
-        target_message = update_object.message if hasattr(update_object, 'message') else update_object.effective_message
+        # Use effective_message to get the original message from a query or update
+        target_message = update_object.effective_message 
         await target_message.reply_photo(
             photo=image_to_send,
             caption=message,
@@ -345,7 +353,7 @@ async def lanlan_price_status(update_object: Update, context: ContextTypes.DEFAU
         )
     except Exception as e:
         logger.warning(f"Could not send image for check price status, sending text only: {e}")
-        target_message = update_object.message if hasattr(update_object, 'message') else update_object.effective_message
+        target_message = update_object.effective_message
         await target_message.reply_text(
             message,
             parse_mode='Markdown',
@@ -561,7 +569,8 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     for target_cap in [100_000_000, 500_000_000, 1_000_000_000]:
         target_price = target_cap / TOTAL_SUPPLY if TOTAL_SUPPLY > 0 else 0
         value_at_target = tokens_now * target_price if tokens_now > 0 else 0
-        future_value_messages.append(f"• at **${target_cap:,.0f}** MC: **${value_at_cap:,.2f}**")
+        # Fix for SyntaxError: f-string expression part cannot include a backslash
+        future_value_messages.append(f"• at **${target_cap:,.0f}** MC: **${value_at_target:,.2f}**")
             
     buy_now_message_part = (
         f"If you bought **${investment_amount_to_show:,.0f}** LanLan today, your investment could be:\n"
@@ -589,20 +598,21 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.warning(f"Failed to send message to group {group_id}: {e}")
 
 
-async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
+# This function was not in use, removing or integrating into button_handler
+# async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+#     query = update.callback_query
+#     await query.answer()
     
-    try:
-        await query.message.delete()
-    except Exception as e:
-        logger.warning(f"Could not delete message: {e}")
+#     try:
+#         await query.message.delete()
+#     except Exception as e:
+#         logger.warning(f"Could not delete message: {e}")
 
-    dummy_update = Update(update_id=update.update_id)
-    dummy_update._effective_chat = query.message.chat
-    dummy_update._effective_message = query.message
+#     dummy_update = Update(update_id=update.update_id)
+#     dummy_update._effective_chat = query.message.chat
+#     dummy_update._effective_message = query.message
 
-    await start(dummy_update, context)
+#     await start(dummy_update, context)
 
 
 # Flask app initialization
@@ -613,21 +623,21 @@ ptb_application = None
 
 @flask_app.route(WEBHOOK_PATH, methods=["POST"])
 async def telegram_webhook():
+    global ptb_application # Ensure global access within Flask route
+
     if not ptb_application:
-        logger.error("Telegram Application not initialized for webhook.")
+        logger.error("Telegram Application not initialized for webhook. Rejecting update.")
         return jsonify({"status": "error", "message": "Bot not ready"}), 503
 
-    # Ensure the request is coming from Telegram and is a valid JSON
-    if not request.json:
-        logger.warning("Received non-JSON request to webhook.")
-        return jsonify({"status": "error", "message": "Invalid request"}), 400
-
     try:
-        update = Update.de_json(request.json, ptb_application.bot)
-        await ptb_application.process_update(update)
+        # Crucial for PTB v20.x in webhook mode: ensure application context is active
+        async with ptb_application:
+            await ptb_application.process_update(Update.de_json(request.json, ptb_application.bot))
         return jsonify({"status": "ok"}), 200
     except Exception as e:
         logger.error(f"Error processing Telegram webhook update: {e}")
+        # Log the full traceback for better debugging on Render
+        logger.exception("Full traceback for webhook processing error:") 
         return jsonify({"status": "error", "message": "Processing failed"}), 500
 
 @flask_app.route("/")
@@ -641,7 +651,7 @@ def health_check():
 
 
 # --- Main function for initializing and running the bot ---
-def main():
+async def main(): # <<< IMPORTANT: Changed to async def
     global last_known_market_cap, settings, groups, SCHEDULED_INTERVAL, SCHEDULED_INTERVAL_STR, ptb_application
 
     # --- Critical checks for required environment variables ---
@@ -667,6 +677,10 @@ def main():
         .build()
     )
     logger.info("Application initialized successfully for webhooks")
+
+    # IMPORTANT: Explicitly initialize the Application for async operations (webhook mode)
+    await ptb_application.initialize() 
+    logger.info("Application initialized for async operations.")
 
     # Initialize data (settings and groups)
     settings = load_json(SETTINGS_FILE, {
@@ -695,28 +709,41 @@ def main():
     ptb_application.add_handler(CommandHandler("whomadethebot", whomadethebot))
     ptb_application.add_handler(CommandHandler("help", help_command))
 
-    ptb_application.add_handler(CallbackQueryHandler(button_handler, pattern='^(check_lanlan_price|start_lanlan_calculation)$'))
-    ptb_application.add_handler(CallbackQueryHandler(back_to_main_menu, pattern='^back_to_main$'))
+    # All button handlers are now managed by a single function
+    ptb_application.add_handler(CallbackQueryHandler(button_handler, pattern='^(check_lanlan_price|start_lanlan_calculation|back_to_main)$'))
 
-    # Set up webhook for Telegram
-    async def set_telegram_webhook():
-        try:
-            full_webhook_url = f"{WEBHOOK_URL}{WEBHOOK_PATH}"
-            await ptb_application.bot.set_webhook(url=full_webhook_url, allowed_updates=["message", "callback_query"])
-            logger.info(f"Telegram webhook set to: {full_webhook_url}")
-        except Exception as e:
-            logger.error(f"Failed to set Telegram webhook: {e}")
 
-    # Run the webhook setup as an async task
-    asyncio.run(set_telegram_webhook())
+    # Start the PTB Application's internal loop (for JobQueue and event processing) in a background task.
+    # This allows Flask's blocking `run()` method to execute.
+    asyncio.create_task(ptb_application.run_webhook())
+    logger.info("PTB Application background task started.")
 
-    # Start the JobQueue (important for scheduled_job to run)
-    # This only starts the JobQueue listener, NOT Telegram polling.
-    # It's confusingly named, but required for JobQueue in webhook mode.
-    
+    # Set up webhook with Telegram. This requires the bot to be running.
+    try:
+        full_webhook_url = f"{WEBHOOK_URL}{WEBHOOK_PATH}"
+        await ptb_application.bot.set_webhook(url=full_webhook_url, allowed_updates=["message", "callback_query"])
+        logger.info(f"Telegram webhook set to: {full_webhook_url}")
+    except Exception as e:
+        logger.error(f"Failed to set Telegram webhook: {e}")
+        logger.exception("Full traceback for set_webhook error:") # Log traceback for better debugging
+
+    # Schedule recurring job (still needed for proactive messages)
+    try:
+        job_queue: JobQueue = ptb_application.job_queue
+        if SCHEDULED_INTERVAL is not None and SCHEDULED_INTERVAL > 0:
+            job_queue.run_repeating(scheduled_job, interval=SCHEDULED_INTERVAL, first=SCHEDULED_FIRST, name="scheduled_price_update")
+            logger.info(f"Scheduled job set successfully with interval: {SCHEDULED_INTERVAL_STR}")
+        else:
+            logger.error(f"Invalid SCHEDULED_INTERVAL ({SCHEDULED_INTERVAL_STR}), scheduled job will not run.")
+    except Exception as e:
+        logger.error(f"Failed to schedule job: {e}")
+        logger.exception("Full traceback for job scheduling error:")
+
 
     logger.info(f"Flask app starting on port {PORT}")
+    # Flask's run() method is blocking, so it must be the last call
     flask_app.run(host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
-    main()
+    # When running a top-level async function, use asyncio.run()
+    asyncio.run(main()) # <<< IMPORTANT: Run main as an async function

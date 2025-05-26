@@ -1,0 +1,27 @@
+{
+    "default_image_url": "https://imgur.com/a/whegQcv",
+    "millionaire_image_url": "https://i.imgur.com/X2jYq2f.gif",
+    "check_price_image_url": "https://i.imgur.com/qLw0y0l.jpeg",
+    "scheduled_interval": 7200,
+    "scheduled_interval_str": "2h",
+    "last_known_market_cap": 17981526.019850962,
+    "milestones": [
+        10000000,
+        20000000,
+        30000000,
+        40000000,
+        50000000,
+        100000000,
+        200000000,
+        300000000,
+        400000000,
+        500000000,
+        1000000000,
+        1500000000,
+        2000000000,
+        5000000000,
+        10000000000
+    ],
+    "highest_milestone_achieved": 10000000,
+    "scheduled_and_check_price_image_url": "https://imgur.com/a/FVtSdd9"
+}

@@ -273,7 +273,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def lanlan_price_status(update_object: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     market_cap = fetch_market_cap()
-    if market_cap is None:
+    if market_cap == None: # <<< FIXED: Changed === to ==
         await update_object.effective_message.reply_text("😿 Oh no, I couldn’t fetch LanLan data! Please try again later. The cat's on a coffee break!")
         return
     
@@ -379,7 +379,7 @@ async def lanlan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
         current_market_cap = fetch_market_cap()
-        if current_market_cap == None:
+        if current_market_cap is None:
             await update.message.reply_text("😿 Oh no, I couldn’t fetch current LanLan data! Please try again later. The cat's on a coffee break!")
             return
         
@@ -424,7 +424,7 @@ async def lanlan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("That doesn't look like valid numbers. Please enter your investment and initial market cap as numbers. Example: `/lanlan 100 5000000`")
     except Exception as e:
         logger.error(f"Error in lanlan command: {e}")
-        await update.message.reply_text("😿 An unexpected error occurred during calculation. The cat's puzzled! Please try again.")
+        await update.message.reply_text("😿 An unexpected error occurred during calculation. The cat's puzzled! Please try again!")
 
 async def wen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("😺 Meow meow! LanLan is ready to soar, are you? 🚀🧲 Oranga is the new Cat!")
@@ -514,7 +514,7 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     next_milestone_end_for_progress = None
     
     for milestone_val in sorted(milestones):
-        if milestone_val > highest_milestone_achieved:
+        if milestone_val > highest_achieved:
             next_milestone_end_for_progress = milestone_val
             break
     
@@ -613,12 +613,11 @@ async def telegram_webhook():
         return jsonify({"status": "error", "message": "Bot not ready"}), 503
 
     try:
-        # Directly process the update. The Application is already running in background via run_in_background().
+        # Directly process the update. The Application is already running in background via run_webhook().
         await ptb_application.process_update(Update.de_json(request.json, ptb_application.bot))
         return jsonify({"status": "ok"}), 200
     except Exception as e:
         logger.error(f"Error processing Telegram webhook update: {e}")
-        # Log the full traceback for better debugging on Render
         logger.exception("Full traceback for webhook processing error:") 
         return jsonify({"status": "error", "message": "Processing failed"}), 500
 
@@ -654,7 +653,7 @@ async def main(): # <<< IMPORTANT: Changed to async def
     ptb_application = (
         Application.builder()
         .token(TELEGRAM_TOKEN)
-        .updater(None) # No Updater needed for webhooks
+        # .updater(None) # <<< REMOVED THIS LINE - allow default Updater for run_webhook()
         .job_queue(JobQueue())
         .build()
     )
@@ -696,10 +695,9 @@ async def main(): # <<< IMPORTANT: Changed to async def
 
 
     # Start the PTB Application's internal loop (for JobQueue and event processing) in a background task.
-    # Use run_in_background for webhook mode without an Updater.
-    # This allows Flask's blocking `run()` method to execute.
-    ptb_application.run_in_background() # <<< FINAL FIX HERE
-    logger.info("PTB Application background task started using run_in_background.")
+    # We now allow PTB to create its default Updater, which run_webhook expects.
+    asyncio.create_task(ptb_application.run_webhook()) # <<< CHANGED BACK TO THIS
+    logger.info("PTB Application background task started using run_webhook.")
 
     # Set up webhook with Telegram. This requires the bot to be running.
     try:

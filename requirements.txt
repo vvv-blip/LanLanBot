@@ -1,5 +1,5 @@
 python-telegram-bot==22.1
 requests
 apscheduler
-Flask
+Flask[async]
 

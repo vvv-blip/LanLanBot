@@ -3,7 +3,7 @@ import os
 import asyncio
 import logging
 from flask import Flask, request, jsonify
-from asgiref.wsgi import WsgiToAsgi # <--- CORRECTED IMPORT
+from asgiref.wsgi import WsgiToAsgi
 from bot import setup_application, TELEGRAM_TOKEN, logger
 from telegram import Update
 
@@ -14,21 +14,15 @@ app_logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
-# Global variables
+# Global variable for telegram_app, initialized to None
 telegram_app = None
 
-# Initialize event loop
-try:
-    loop = asyncio.get_event_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-
-
-async def init_telegram_app():
-    """Initialize the Telegram Application asynchronously."""
+# We no longer explicitly manage the asyncio loop here. Uvicorn will do it.
+# async def init_telegram_app_async() can remain, but its direct call will move.
+async def init_telegram_app_async():
+    """Initializes the Telegram Application asynchronously."""
     global telegram_app
-    if telegram_app is None:
+    if telegram_app is None: # Ensure it's only initialized once
         try:
             app_logger.info("Attempting to set up Telegram Application...")
             telegram_app = await setup_application()
@@ -47,22 +41,29 @@ async def init_telegram_app():
         except Exception as e:
             app_logger.error(f"Failed to initialize Telegram Application: {e}", exc_info=True)
             raise
+    else:
+        app_logger.info("Telegram Application already initialized.")
 
-# Initialize Telegram app at module import time
-try:
-    app_logger.info("Running init_telegram_app at module import time.")
-    loop.run_until_complete(init_telegram_app())
-    app_logger.info("Telegram Application initialization completed.")
-except Exception as e:
-    app_logger.error(f"Initialization failed at module level: {e}", exc_info=True)
-    raise
+# Remove this entire block, as Uvicorn will manage the startup:
+# try:
+#     app_logger.info("Running init_telegram_app at module import time.")
+#     loop.run_until_complete(init_telegram_app())
+#     app_logger.info("Telegram Application initialization completed.")
+# except Exception as e:
+#     app_logger.error(f"Initialization failed at module level: {e}", exc_info=True)
+#     raise
 
 @app.route("/webhook", methods=["POST"])
 async def telegram_webhook():
     global telegram_app
+    # Add a check/lazy init here as a fallback, though primary init is in main.py
     if telegram_app is None:
-        app_logger.error("Telegram Application not initialized for webhook. Rejecting update.")
-        return jsonify({"status": "error", "message": "Bot not ready"}), 503
+        app_logger.warning("Telegram Application not initialized for webhook. Attempting to initialize now.")
+        try:
+            await init_telegram_app_async()
+        except Exception as e:
+            app_logger.error(f"Failed to lazy-init Telegram Application: {e}", exc_info=True)
+            return jsonify({"status": "error", "message": "Bot not ready: Lazy init failed"}), 503
 
     try:
         update = Update.de_json(request.get_json(), telegram_app.bot)
@@ -80,18 +81,13 @@ def health():
 def health_check():
     return jsonify({"status": "healthy"})
 
-# Wrap your Flask app with WsgiToAsgi to make it ASGI compliant
-asgi_app = WsgiToAsgi(app) # <--- CORRECTED LINE
+# Define the Flask app instance for WsgiToAsgi to wrap
+flask_app_instance = app
 
-# Standard Flask development server entry point (not used by Uvicorn in production)
+# The `if __name__ == "__main__":` block is for local development only and
+# will not be executed by Uvicorn in production.
 if __name__ == "__main__":
-    app_logger.info("Running Flask app in development mode using Flask's built-in server (not recommended for production).")
-    try:
-        app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
-    finally:
-        if telegram_app and telegram_app._initialized:
-            app_logger.info("Stopping Telegram Application.")
-            loop.run_until_complete(telegram_app.stop())
-        if not loop.is_closed():
-            app_logger.info("Closing asyncio event loop.")
-            loop.close()
+    app_logger.info("Running Flask app in development mode using Flask's built-in server.")
+    # For local dev, you might run init_telegram_app_async here if not using uvicorn locally
+    # asyncio.run(init_telegram_app_async()) # Only if you want to run this init before Flask's dev server
+    flask_app_instance.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))

@@ -11,6 +11,33 @@ app = Flask(__name__)
 # Global variable to hold the Telegram Application instance
 telegram_app = None
 
+def init_telegram_app():
+    """Initialize the Telegram Application synchronously."""
+    global telegram_app
+    if telegram_app is None:
+        try:
+            # Create a new event loop for initialization
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            # Run the async main function
+            telegram_app = loop.run_until_complete(setup_application())
+            loop.run_until_complete(telegram_app.initialize())
+            loop.run_until_complete(telegram_app.start())
+            
+            # Set webhook
+            webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
+            loop.run_until_complete(telegram_app.bot.set_webhook(url=webhook_url, allowed_updates=["message", "callback_query"]))
+            logger.info(f"Webhook set to {webhook_url}")
+            
+            # Close the loop
+            loop.close()
+        except Exception as e:
+            logger.error(f"Failed to initialize Telegram Application: {e}")
+            raise
+
+# Initialize the Telegram app when the module is imported
+init_telegram_app()
+
 @app.route("/webhook", methods=["POST"])
 async def telegram_webhook():
     global telegram_app
@@ -34,24 +61,5 @@ def home():
 def health_check():
     return jsonify({"status": "healthy", "message": "Bot operational"})
 
-async def main():
-    global telegram_app
-    try:
-        # Set up the Telegram application
-        telegram_app = await setup_application()
-        await telegram_app.initialize()
-        await telegram_app.start()
-
-        # Set webhook
-        webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
-        await telegram_app.bot.set_webhook(url=webhook_url, allowed_updates=["message", "callback_query"])
-        logger.info(f"Webhook set to {webhook_url}")
-
-    except Exception as e:
-        logger.error(f"Failed to initialize bot or set webhook: {e}")
-        raise
-
-# Run the async main function before starting the Flask app
 if __name__ == "__main__":
-    asyncio.run(main())
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))

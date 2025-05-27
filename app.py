@@ -8,35 +8,32 @@ from telegram import Update
 # Initialize Flask app
 app = Flask(__name__)
 
-# Global variable to hold the Telegram Application instance
+# Global variables
 telegram_app = None
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
-def init_telegram_app():
-    """Initialize the Telegram Application synchronously."""
+async def init_telegram_app():
+    """Initialize the Telegram Application asynchronously."""
     global telegram_app
     if telegram_app is None:
         try:
-            # Create a new event loop for initialization
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            # Run the async main function
-            telegram_app = loop.run_until_complete(setup_application())
-            loop.run_until_complete(telegram_app.initialize())
-            loop.run_until_complete(telegram_app.start())
-            
-            # Set webhook
+            telegram_app = await setup_application()
+            await telegram_app.initialize()
+            await telegram_app.start()
             webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
-            loop.run_until_complete(telegram_app.bot.set_webhook(url=webhook_url, allowed_updates=["message", "callback_query"]))
+            await telegram_app.bot.set_webhook(url=webhook_url, allowed_updates=["message", "callback_query"])
             logger.info(f"Webhook set to {webhook_url}")
-            
-            # Close the loop
-            loop.close()
         except Exception as e:
             logger.error(f"Failed to initialize Telegram Application: {e}")
             raise
 
-# Initialize the Telegram app when the module is imported
-init_telegram_app()
+# Initialize Telegram app at module import
+try:
+    loop.run_until_complete(init_telegram_app())
+except Exception as e:
+    logger.error(f"Initialization failed: {e}")
+    raise
 
 @app.route("/webhook", methods=["POST"])
 async def telegram_webhook():
@@ -62,4 +59,10 @@ def health_check():
     return jsonify({"status": "healthy", "message": "Bot operational"})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+    try:
+        app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+    finally:
+        # Clean up on shutdown
+        if telegram_app:
+            loop.run_until_complete(telegram_app.stop())
+        loop.close()

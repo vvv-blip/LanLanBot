@@ -7,7 +7,7 @@ from bot import setup_application, TELEGRAM_TOKEN, logger
 from telegram import Update
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 app_logger = logging.getLogger(__name__)
 
 # Initialize Flask app
@@ -24,7 +24,9 @@ async def init_telegram_app():
     if telegram_app is None:
         try:
             telegram_app = await setup_application()
-            await telegram_app.start()
+            if not telegram_app.initialized:
+                await telegram_app.initialize()  # Explicitly initialize
+            await telegram_app.start()  # Start after initialization
             webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
             await telegram_app.bot.setWebhook(url=webhook_url, allowed_updates=["message", "callback_query"])
             app_logger.info(f"Webhook set to {webhook_url}")

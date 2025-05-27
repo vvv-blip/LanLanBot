@@ -514,9 +514,11 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         target_price = target_cap / TOTAL_SUPPLY if TOTAL_SUPPLY > 0 else 0
         value_at_target = tokens_now * target_price if tokens_now > 0 else 0
         future_value_messages.append(f"• at **${target_cap:,.0f}** MC: **${value_at_target:,.2f}**")
+
+    # Fixed: Join future_value_messages outside the f-string
     buy_now_message_part = (
         f"If you bought **${investment_amount_to_show:,.0f}** LanLan today, your investment could be:\n"
-        f"{'\n'.join(future_value_messages)}"
+        + "\n".join(future_value_messages)
     )
 
     image_url = SCHEDULED_AND_CHECK_PRICE_IMAGE_URL
@@ -537,7 +539,6 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.info(f"Sent scheduled update to group {group_id}")
         except Exception as e:
             logger.warning(f"Failed to send message to group {group_id}: {e}")
-
 async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()

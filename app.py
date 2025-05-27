@@ -3,7 +3,7 @@ import os
 import asyncio
 import logging
 from flask import Flask, request, jsonify
-from flask_asgi import ASGIApp # <--- NEW IMPORT
+from asgiref.wsgi import WsgiToAsgi # <--- CORRECTED IMPORT
 from bot import setup_application, TELEGRAM_TOKEN, logger
 from telegram import Update
 
@@ -80,8 +80,8 @@ def health():
 def health_check():
     return jsonify({"status": "healthy"})
 
-# Wrap your Flask app with ASGIApp to make it ASGI compliant
-asgi_app = ASGIApp(app) # <--- NEW LINE: This is the ASGI application Uvicorn will run
+# Wrap your Flask app with WsgiToAsgi to make it ASGI compliant
+asgi_app = WsgiToAsgi(app) # <--- CORRECTED LINE
 
 # Standard Flask development server entry point (not used by Uvicorn in production)
 if __name__ == "__main__":

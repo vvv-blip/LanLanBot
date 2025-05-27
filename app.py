@@ -3,7 +3,8 @@ import os
 import asyncio
 import logging
 from flask import Flask, request, jsonify
-from bot import setup_application, TELEGRAM_TOKEN, logger # Assuming logger is correctly imported from bot.py
+from flask_asgi import ASGIApp # <--- NEW IMPORT
+from bot import setup_application, TELEGRAM_TOKEN, logger
 from telegram import Update
 
 # Configure logging
@@ -17,9 +18,6 @@ app = Flask(__name__)
 telegram_app = None
 
 # Initialize event loop
-# Use get_event_loop() if it's already running, otherwise create a new one.
-# This pattern can sometimes be tricky with Gunicorn.
-# For simplicity, let's try to get or create.
 try:
     loop = asyncio.get_event_loop()
 except RuntimeError:
@@ -36,17 +34,16 @@ async def init_telegram_app():
             telegram_app = await setup_application()
             app_logger.info("Telegram Application setup_application called.")
 
-            # *** THIS IS THE CRUCIAL CHANGE: .initialized -> ._initialized ***
             if not telegram_app._initialized:
                 app_logger.info("Telegram Application not yet initialized, performing explicit initialize and start.")
-                await telegram_app.initialize()  # Explicitly initialize the Application
-                await telegram_app.start()       # Start the Application (important for webhook to work)
-                
+                await telegram_app.initialize()
+                await telegram_app.start()
+
             webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
             app_logger.info(f"Attempting to set webhook to: {webhook_url}")
             await telegram_app.bot.setWebhook(url=webhook_url, allowed_updates=["message", "callback_query"])
             app_logger.info(f"Webhook successfully set to {webhook_url}")
-            
+
         except Exception as e:
             app_logger.error(f"Failed to initialize Telegram Application: {e}", exc_info=True)
             raise
@@ -68,9 +65,6 @@ async def telegram_webhook():
         return jsonify({"status": "error", "message": "Bot not ready"}), 503
 
     try:
-        # Flask is generally synchronous. Running async code directly in a sync Flask route
-        # works because `run_until_complete` is called at the module level for init_telegram_app
-        # and the Application's process_update itself can be awaited.
         update = Update.de_json(request.get_json(), telegram_app.bot)
         await telegram_app.process_update(update)
         return jsonify({"status": "ok"}), 200
@@ -86,14 +80,16 @@ def health():
 def health_check():
     return jsonify({"status": "healthy"})
 
-# Standard Flask development server entry point (not used by Gunicorn)
+# Wrap your Flask app with ASGIApp to make it ASGI compliant
+asgi_app = ASGIApp(app) # <--- NEW LINE: This is the ASGI application Uvicorn will run
+
+# Standard Flask development server entry point (not used by Uvicorn in production)
 if __name__ == "__main__":
-    app_logger.info("Running Flask app in development mode.")
+    app_logger.info("Running Flask app in development mode using Flask's built-in server (not recommended for production).")
     try:
         app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
     finally:
-        # Clean up Telegram Application gracefully on shutdown if running locally
-        if telegram_app and telegram_app._initialized: # Check _initialized before trying to stop
+        if telegram_app and telegram_app._initialized:
             app_logger.info("Stopping Telegram Application.")
             loop.run_until_complete(telegram_app.stop())
         if not loop.is_closed():

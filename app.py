@@ -10,7 +10,7 @@ app = Flask(__name__)
 
 # Global variables
 telegram_app = None
-loop = asyncio.new_event_loop()
+loop = asyncio.get_event_loop() if asyncio.get_event_loop().is_running() else asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
 async def init_telegram_app():
@@ -65,4 +65,5 @@ if __name__ == "__main__":
         # Clean up on shutdown
         if telegram_app:
             loop.run_until_complete(telegram_app.stop())
-        loop.close()
+        if not loop.is_closed():
+            loop.close()

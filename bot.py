@@ -219,7 +219,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/lanlan <investment> <initial_market_cap>`: Calculate your potential gains. "
         "Example: `/lanlan 100 5000000` (meaning **$100** invested at **$5,000,000** market cap).\n"
         "• `/wen`: A fun check on LanLan's readiness for takeoff!\n"
-        "• `/whomadethebot`: Find out who crafted this purr-fect bot.\n\n"
         "**Admin Commands (Group Admins Only):**\n"
         "• `/setschedule <interval>`: Set how often scheduled updates are sent. "
         "Example: `/setschedule 1h` or `/setschedule 30m`\n\n"

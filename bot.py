@@ -73,22 +73,22 @@ if SCHEDULED_INTERVAL is None:
 SCHEDULED_FIRST = 60
 
 # --- UPDATED IMAGE URLs ---
-DEFAULT_IMAGE_URL = "https://i.imgur.com/example_default_image.jpeg"
-SCHEDULED_AND_CHECK_PRICE_IMAGE_URL = "https://i.imgur.com/example_millionaire_image.gif"
+DEFAULT_IMAGE_URL = "https://i.imgur.com/LFE9ouI.jpeg"
+SCHEDULED_AND_CHECK_PRICE_IMAGE_URL = "https://i.imgur.com/EkpFRCD.jpeg"
 
 GROWTH_GIF_URLS = [
-    "https://i.imgur.com/growth1.gif",
-    "https://i.imgur.com/growth2.gif",
-    "https://i.imgur.com/growth3.gif",
-    "https://i.imgur.com/growth4.gif",
-    "https://i.imgur.com/growth5.gif",
+    "https://i.imgur.com/KxzLvcu.gif",
+    "https://i.imgur.com/K4uOUd3.gif",
+    "https://i.imgur.com/PW3v7q9.gif",
+    "https://i.imgur.com/EJ5GzcK.gif",
+    "https://i.imgur.com/btixIWt.gif",
 ]
 MILESTONE_GIF_URLS = [
-    "https://i.imgur.com/milestone1.gif",
-    "https://i.imgur.com/milestone2.gif",
-    "https://i.imgur.com/milestone3.gif",
-    "https://i.imgur.com/milestone4.gif",
-    "https://i.imgur.com/milestone5.gif",
+   "https://i.imgur.com/KxzLvcu.gif",
+    "https://i.imgur.com/K4uOUd3.gif",
+    "https://i.imgur.com/PW3v7q9.gif",
+    "https://i.imgur.com/EJ5GzcK.gif",
+    "https://i.imgur.com/btixIWt.gif",
 ]
 
 # Data persistence
@@ -296,7 +296,7 @@ async def lanlan_price_status(update_object: Update, context: ContextTypes.DEFAU
         f"Current Price: **${price:,.10f}**\n\n"
         f"Next Target: **${next_milestone_end_for_progress:,.0f}**\n"
         f"Progress: {progress_bar}\n\n"
-        f"Oranga is the new Cat! 🍊🐾"
+        f"Orange is the new Cat! 🍊🐾"
     )
     keyboard = [
         [InlineKeyboardButton("🤔 Calculate My Investment", callback_data='start_lanlan_calculation')],
@@ -383,7 +383,7 @@ async def lanlan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("😿 An unexpected error occurred during calculation. The cat's puzzled! Please try again.")
 
 async def wen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("😺 Meow meow! LanLan is ready to soar, are you? 🚀🧲 Oranga is the new Cat!")
+    await update.message.reply_text("😺 Meow meow🧲 Orange is the new Cat!")
 
 async def whomadethebot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("@nakatroll")
@@ -530,7 +530,7 @@ async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         f"📈 Invested **${investment_amount_to_show:,.0f}** at **${initial_market_cap_for_example:,.0f}** MC? "
         f"It's now worth **${current_value_at_initial_investment:,.2f}**!\n"
         f"{buy_now_message_part}\n\n"
-        f"Oranga is the new Cat! 🍊🐾"
+        f"Orange is the new Cat! 🍊🐾"
     )
 
     for group_id in list(groups):

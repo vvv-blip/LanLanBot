@@ -547,13 +547,13 @@ async def random_buy_now_scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> No
 
     message = (
         
-    f"*Random Scenario!* 😺\n\n"
-    f"If you **Buy** *${random_investment_amount:,.0f}* now:\n  "
-    f"**Current MC**: *${current_market_cap:,.0f}*\n\n "
-    f"Your gains could be:\n"
-    f"At **$500M MC**: ${future_value_500m:,.0f}\n"
-    f"At **$1B MC**: ${future_value_1b:,.0f}\n\n"
-    f"Just sayin’ meow!🧲😺"
+    f"😼 **Random Scenario Alert!** 😼\n\n"
+        f"If you **buy** *${random_investment_amount:,.0f}* right meow:\n\n"
+        f"🐾 **Current MC**: *${current_market_cap:,.0f}*\n\n"
+        f"Potential bag:\n"
+        f"📈 At **$500M MC**: ${future_value_500m:,.0f}\n"
+        f"🚀 At **$1B MC**: ${future_value_1b:,.0f}\n\n"
+        f"Just sayin', meow 😼✨"
 )
     
     for group_id in list(groups):

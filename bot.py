@@ -548,11 +548,11 @@ async def random_buy_now_scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> No
     message = (
         message = (
     f"**Random Scenario!** 😺\n\n"
-    f"If you **Buy** ${escape_markdown_v2(f'{random_investment_amount:,.0f}')} now:\n"
-    f"**Current MC**: ${escape_markdown_v2(f'{current_market_cap:,.0f}')}\n\n"
+    f"If you **Buy** ${random_investment_amount:,.0f} now:\n"
+    f"**Current MC**: ${current_market_cap:,.0f}\n\n"
     f"Your gains could be:\n"
-    f"At **$500M MC**: ${escape_markdown_v2(f'{future_value_500m:,.0f}')}\n"
-    f"At **$1B MC**: ${escape_markdown_v2(f'{future_value_1b:,.0f}')}\n\n"
+    f"At **$500M MC**: ${future_value_500m:,.0f}\n"
+    f"At **$1B MC**: ${future_value_1b:,.0f}\n\n"
     f"Just sayin’ meow! 🚀"
 )
     

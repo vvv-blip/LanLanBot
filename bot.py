@@ -155,17 +155,29 @@ def fetch_market_cap():
     try:
         logger.info(f"Fetching market cap for token ID: {MAMA_COIN_ADDRESS.lower()}")
         response = requests.post(SUBGRAPH_URL, json={"query": query}, timeout=15)
-        response.raise_for_status()
-        data = response.json()["data"]
-        if "errors" in response.json():
-            logger.error(f"Subgraph returned errors: {response.json()['errors']}")
+        response.raise_for_status() # Raise an exception for HTTP errors (4xx or 5xx)
+        
+        data = response.json()
+        if "errors" in data:
+            logger.error(f"Subgraph returned errors: {data['errors']}")
+            return None
+        
+        # Check if 'data' key exists before accessing
+        if "data" not in data:
+            logger.error(f"Subgraph response missing 'data' key. Full response: {data}")
             return None
 
-        token_data = data.get("token")
+        token_data = data["data"].get("token")
         if not token_data:
-            logger.error(f"No token data found for LanLan token with ID: {MAMA_COIN_ADDRESS.lower()}")
+            logger.error(f"No token data found for LanLan token with ID: {MAMA_COIN_ADDRESS.lower()}. Full data: {data['data']}")
             return None
-        eth_price_usd = float(data["bundle"]["ethPrice"])
+        
+        bundle_data = data["data"].get("bundle")
+        if not bundle_data or "ethPrice" not in bundle_data:
+            logger.error(f"No bundle data or ethPrice found. Full data: {data['data']}")
+            return None
+
+        eth_price_usd = float(bundle_data["ethPrice"])
         token_price_eth = float(token_data["derivedETH"])
 
         token_price_usd = token_price_eth * eth_price_usd
@@ -522,25 +534,26 @@ async def random_buy_now_scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> No
         logger.warning("Current price is zero, skipping random buy now job.")
         return
 
-    random_investment_amount = random.randint(100, 10000) # Random amount between 100 and 10000
+    # Updated: Random amount between $100 and $10,000
+    random_investment_amount = random.randint(100, 10000) 
     target_market_cap_500m = 500_000_000.0
     target_market_cap_1b = 1_000_000_000.0
 
     tokens_bought = random_investment_amount / price
     
+    # Calculate future values for 500M and 1B
     target_price_500m = target_market_cap_500m / TOTAL_SUPPLY
-    value_at_500m = tokens_bought * target_price_500m
+    future_value_500m = tokens_bought * target_price_500m
 
     target_price_1b = target_market_cap_1b / TOTAL_SUPPLY
-    value_at_1b = tokens_bought * target_price_1b
+    future_value_1b = tokens_bought * target_price_1b
 
+    # Updated: Simplified message
     message = (
-        f"Random Scenario! 🐾\n\n"
-        f"If you buy *${random_investment_amount:,.2f}* LanLan now (at current MC: ${current_market_cap:,.0f}),\n"
-        f"you'd have {tokens_bought:,.2f} LanLan tokens.\n\n"
-        f"At ${target_market_cap_500m:,.0f} MC, that'd be worth ~${value_at_500m:,.2f}!\n"
-        f"At ${target_market_cap_1b:,.0f} MC, that'd be worth ~${value_at_1b:,.2f}!\n\n"
-        f"Just sayin', meow! 😼"
+        f"Random Scenario! 😺\n\n"
+        f"If you buy *${random_investment_amount:,.2f}* LanLan now...\n"
+        f"You can have *${future_value_500m:,.2f}* at $500M MC,\n"
+        f"and *${future_value_1b:,.2f}* at $1B MC, just sayin' meow! 🐾"
     )
     
     for group_id in list(groups):
@@ -818,6 +831,3 @@ async def setup_application() -> Application:
 
     logger.info("Application setup complete. Ready for webhooks.")
     return app
-
-# Remove the if __name__ == "__main__": block from bot.py
-# The bot will be started by the Flask app in app.py

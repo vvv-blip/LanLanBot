@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-THEGRAPH_API_KEY = os.getenv("THEGRAPH_API_KEY", "6eddad8f39fa53f77b3364dc72aeca36")
+THEGRAPH_API_KEY = os.getenv("THEGRAPH_API_KEY", "6eddad8f39fa53f77b33644dc72aeca36") # Using a default key for demonstration
 MAMA_COIN_ADDRESS = os.getenv("MAMA_COIN_ADDRESS", "0xEccA809227d43B895754382f1fd871628d7E51FB")
 try:
     TOTAL_SUPPLY = float(os.getenv("TOTAL_SUPPLY", "8888888888"))
@@ -55,7 +55,8 @@ def parse_interval_string(interval_str):
 # Constants
 SETTINGS_FILE = "settings.json"
 GROUPS_FILE = "groups.json"
-SUBGRAPH_URL = f"https://gateway.thegraph.com/api/{THEGRAPH_API_KEY}/subgraphs/id/EYCKATKGBKLWvSfwvBjzfCBmGwYNvVkduYXVivCsLRFu"
+# Using the provided subgraph ID
+SUBGRAPH_URL = f"https://gateway.thegraph.com/api/{THEGRAPH_API_KEY}/subgraphs/id/A3Np3RQbaBA6oKJgiwDJeo5T3zrYfGHPWFYayMwtNDum"
 
 # Load SCHEDULED_INTERVAL from environment or default (will be overwritten by settings.json later)
 SCHEDULED_INTERVAL_STR = os.getenv("SCHEDULED_INTERVAL", "2h")
@@ -153,28 +154,29 @@ def fetch_market_cap():
     """ % MAMA_COIN_ADDRESS.lower()
 
     try:
-        logger.info(f"Fetching market cap for token ID: {MAMA_COIN_ADDRESS.lower()}")
+        logger.info(f"Fetching market cap for token ID: {MAMA_COIN_ADDRESS.lower()} from {SUBGRAPH_URL}")
         response = requests.post(SUBGRAPH_URL, json={"query": query}, timeout=15)
-        response.raise_for_status() # Raise an exception for HTTP errors (4xx or 5xx)
+        response.raise_for_status()
         
-        data = response.json()
-        if "errors" in data:
-            logger.error(f"Subgraph returned errors: {data['errors']}")
-            return None
+        json_response = response.json()
         
-        # Check if 'data' key exists before accessing
-        if "data" not in data:
-            logger.error(f"Subgraph response missing 'data' key. Full response: {data}")
+        if "errors" in json_response:
+            logger.error(f"Subgraph returned errors: {json_response['errors']}")
             return None
 
-        token_data = data["data"].get("token")
-        if not token_data:
-            logger.error(f"No token data found for LanLan token with ID: {MAMA_COIN_ADDRESS.lower()}. Full data: {data['data']}")
+        data = json_response.get("data")
+        if not data:
+            logger.error(f"Subgraph response missing 'data' field. Response: {json_response}")
             return None
-        
-        bundle_data = data["data"].get("bundle")
+
+        token_data = data.get("token")
+        if not token_data:
+            logger.error(f"No token data found for LanLan token with ID: {MAMA_COIN_ADDRESS.lower()} in subgraph data. Data: {data}")
+            return None
+            
+        bundle_data = data.get("bundle")
         if not bundle_data or "ethPrice" not in bundle_data:
-            logger.error(f"No bundle data or ethPrice found. Full data: {data['data']}")
+            logger.error(f"No bundle data or ethPrice found in subgraph data. Data: {data}")
             return None
 
         eth_price_usd = float(bundle_data["ethPrice"])
@@ -190,7 +192,7 @@ def fetch_market_cap():
     except json.JSONDecodeError as json_err:
         logger.error(f"JSON decode error from subgraph response: {json_err}. Response: {response.text if 'response' in locals() else 'N/A'}")
     except KeyError as key_err:
-        logger.error(f"Key error in subgraph data structure: {key_err}. Data: {data if 'data' in locals() else 'N/A'}")
+        logger.error(f"Key error in subgraph data structure: {key_err}. This typically means a field was missing. Data: {data if 'data' in locals() else 'N/A'}")
     except Exception as e:
         logger.error(f"An unexpected error occurred fetching market cap: {e}")
         return None
@@ -534,26 +536,19 @@ async def random_buy_now_scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> No
         logger.warning("Current price is zero, skipping random buy now job.")
         return
 
-    # Updated: Random amount between $100 and $10,000
-    random_investment_amount = random.randint(100, 10000) 
+    random_investment_amount = random.randint(100, 10000) # Random amount between 100 and 10000
     target_market_cap_500m = 500_000_000.0
     target_market_cap_1b = 1_000_000_000.0
 
     tokens_bought = random_investment_amount / price
     
-    # Calculate future values for 500M and 1B
-    target_price_500m = target_market_cap_500m / TOTAL_SUPPLY
-    future_value_500m = tokens_bought * target_price_500m
+    future_value_500m = tokens_bought * (target_market_cap_500m / TOTAL_SUPPLY)
+    future_value_1b = tokens_bought * (target_market_cap_1b / TOTAL_SUPPLY)
 
-    target_price_1b = target_market_cap_1b / TOTAL_SUPPLY
-    future_value_1b = tokens_bought * target_price_1b
-
-    # Updated: Simplified message
     message = (
         f"Random Scenario! 😺\n\n"
-        f"If you buy *${random_investment_amount:,.2f}* LanLan now...\n"
-        f"You can have *${future_value_500m:,.2f}* at $500M MC,\n"
-        f"and *${future_value_1b:,.2f}* at $1B MC, just sayin' meow! 🐾"
+        f"If you buy *${random_investment_amount:,.0f}* now (at current MC: ${current_market_cap:,.0f}),\n"
+        f"you can have *${future_value_500m:,.0f}* at $500M MC and *${future_value_1b:,.0f}* at $1B MC, just sayin' meow. 🚀"
     )
     
     for group_id in list(groups):
@@ -812,7 +807,7 @@ async def setup_application() -> Application:
         # Existing scheduled_job (price update)
         if SCHEDULED_INTERVAL is not None and SCHEDULED_INTERVAL > 0:
             job_queue.run_repeating(scheduled_job, interval=SCHEDULED_INTERVAL, first=SCHEDULED_FIRST, name="scheduled_price_update")
-            logger.info(f"Scheduled price update job set successfully with interval: {SCHEDULED_INTERVAL_STR}")
+            logger.info(f"Scheduled price update job set successfully with interval: {SCHEDULEED_INTERVAL_STR}")
         else:
             logger.error(f"Invalid SCHEDULED_INTERVAL ({SCHEDULED_INTERVAL_STR}), price update job not scheduled.")
             # Do not raise ValueError here if only one job fails, let others potentially run.

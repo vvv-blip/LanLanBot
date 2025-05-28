@@ -546,10 +546,15 @@ async def random_buy_now_scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> No
     future_value_1b = tokens_bought * (target_market_cap_1b / TOTAL_SUPPLY)
 
     message = (
-        f"Random Scenario! 😺\n\n"
-        f"If you buy *${random_investment_amount:,.0f}* now (at current MC: ${current_market_cap:,.0f}),\n"
-        f"you can have *${future_value_500m:,.0f}* at $500M MC and *${future_value_1b:,.0f}* at $1B MC, just sayin' meow. 🚀"
-    )
+        message = (
+    f"**Random Scenario!** 😺\n\n"
+    f"If you **Buy** ${escape_markdown_v2(f'{random_investment_amount:,.0f}')} now:\n"
+    f"**Current MC**: ${escape_markdown_v2(f'{current_market_cap:,.0f}')}\n\n"
+    f"Your gains could be:\n"
+    f"At **$500M MC**: ${escape_markdown_v2(f'{future_value_500m:,.0f}')}\n"
+    f"At **$1B MC**: ${escape_markdown_v2(f'{future_value_1b:,.0f}')}\n\n"
+    f"Just sayin’ meow! 🚀"
+)
     
     for group_id in list(groups):
         try:

@@ -546,7 +546,7 @@ async def random_buy_now_scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> No
     future_value_1b = tokens_bought * (target_market_cap_1b / TOTAL_SUPPLY)
 
     message = (
-        message = (
+        
     f"**Random Scenario!** 😺\n\n"
     f"If you **Buy** ${random_investment_amount:,.0f} now:\n"
     f"**Current MC**: ${current_market_cap:,.0f}\n\n"
